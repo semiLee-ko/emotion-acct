@@ -1,0 +1,16 @@
+{
+  "status": "commited",
+  "type": "frontend",
+  "scope": "codebase",
+  "localEndpoint": "http://localhost:5173",
+  "executionArgs": {
+    "projectName": "emotion-acct",
+    "projectPath": "e:\\projects\\emotion-acct",
+    "testIds": [],
+    "additionalInstruction": "Use mock data for authentication (mock_auth_code) to bypass actual Toss login. Ensure Daily Limit tests account for the current hardcoded 1/1 limit if applicable.",
+    "envs": {
+      "API_KEY": "sk-user-M5bDtSYbSlNv6qL1iGj1E18LDxkvBeDo-xV5hqHs_fOppm-J0uOgbr6t1sWuQX-pkR3XGRowaupWVCDbLdDzdtv8pCZjBjmw7GXPwpkQBDJz7OKytIfoZ1iPs8662Hz9A-0"
+    }
+  },
+  "proxy": "http://745633ff-847d-43cf-8ea0-4523a0d7e2e2:MEOmXdrEkj5vaIngZqry6t2jGu4M289B@tun.testsprite.com:8080"
+}

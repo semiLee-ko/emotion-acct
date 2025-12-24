@@ -1,0 +1,53 @@
+{
+    "tech_stack": [
+        "TypeScript",
+        "React",
+        "Vite",
+        "Mantine",
+        "Firebase",
+        "Framer Motion"
+    ],
+    "features": [
+        {
+            "name": "Authentication",
+            "description": "Handles user login via Toss App integration and Firebase Custom Tokens, with anonymous fallback. Includes mock support for local dev.",
+            "files": [
+                "src/lib/firebase.ts",
+                "src/lib/toss-sdk.ts"
+            ]
+        },
+        {
+            "name": "Receipt Management",
+            "description": "Allows adding, viewing, editing, and deleting emotion receipts. Includes daily limit logic and input validation.",
+            "files": [
+                "src/components/AddReceiptModal.tsx",
+                "src/components/ReceiptItem.tsx",
+                "src/App.tsx",
+                "src/components/ConfirmModal.tsx"
+            ]
+        },
+        {
+            "name": "Statistics Dashboard",
+            "description": "Visualizes emotion data with a thermometer (MoodThermometer) and calendar view. Shows total amount and emotion counts.",
+            "files": [
+                "src/components/StatsView.tsx",
+                "src/components/MoodThermometer.tsx",
+                "src/components/CalendarModal.tsx"
+            ]
+        },
+        {
+            "name": "Image Capture",
+            "description": "Captures the dashboard as an image for sharing or saving, utilizing html2canvas.",
+            "files": [
+                "src/lib/capture.ts"
+            ]
+        },
+        {
+            "name": "App Configuration",
+            "description": "Global app configuration and permissions.",
+            "files": [
+                "granite.config.ts"
+            ]
+        }
+    ]
+}
