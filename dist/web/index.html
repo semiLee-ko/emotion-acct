@@ -3,10 +3,24 @@
 
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0" />
+  <meta name="viewport"
+    content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=0, viewport-fit=cover" />
   <title>Emotion Receipt</title>
-  <script type="module" crossorigin src="/assets/index-CYm8uVjg.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-BUx2Gpsi.css">
+  <script>
+    // Polyfill for global
+    window.global = window;
+
+    // Polyfill for Granite Native Emitter (Fix for AdMob/Bridge crash)
+    if (!window.__GRANITE_NATIVE_EMITTER) {
+      window.__GRANITE_NATIVE_EMITTER = {
+        emit: function (event, data) {
+          console.log('[Polyfill] __GRANITE_NATIVE_EMITTER.emit:', event, data);
+        }
+      };
+    }
+  </script>
+  <script type="module" crossorigin src="/assets/index-BIjQ7Ynk.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-CAcSrp93.css">
 </head>
 
 <body>

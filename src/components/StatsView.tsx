@@ -1,6 +1,6 @@
 "use client";
 
-import { Paper, Text, Group, Stack, ActionIcon, Tooltip, Box, rem, Center, Transition, Modal, UnstyledButton, Button } from '@mantine/core';
+import { Paper, Text, Group, Stack, ActionIcon, Tooltip, Box, rem, Center, Transition, Modal, UnstyledButton, Button, TextInput } from '@mantine/core';
 import { PieChart, Pie, Cell, ResponsiveContainer } from 'recharts';
 import { EMOTION_CONFIG, Receipt, EmotionType } from '@/lib/types';
 import { useMemo, useState, useEffect, useRef } from 'react';
@@ -58,13 +58,14 @@ const IconHelp = ({ size = 24, color = 'currentColor' }: { size?: number, color?
 
 
 interface Props {
-    receipts: Receipt[];
+    receipts: Receipt[]; // Filtered receipts for the selected month
+    allReceipts?: Receipt[]; // All receipts for global check
     selectedDate?: Date;
     availableMonths?: string[];
     onDateChange?: (date: Date) => void;
 }
 
-export function StatsView({ receipts, selectedDate, availableMonths = [], onDateChange }: Props) {
+export function StatsView({ receipts, allReceipts = [], selectedDate, availableMonths = [], onDateChange }: Props) {
     const [viewMode, setViewMode] = useState<'chart' | 'thermometer'>('chart');
     const [hoveredItem, setHoveredItem] = useState<{ name: string; value: number; color: string } | null>(null);
     const [showIcon, setShowIcon] = useState(false);
@@ -74,6 +75,8 @@ export function StatsView({ receipts, selectedDate, availableMonths = [], onDate
     const [alertMessage, setAlertMessage] = useState('');
     const [monthModalOpened, { open: openMonthModal, close: closeMonthModal }] = useDisclosure(false);
     const [calendarOpened, { open: openCalendar, close: closeCalendar }] = useDisclosure(false);
+    const [nameModalOpened, { open: openNameModal, close: closeNameModal }] = useDisclosure(false);
+    const [userName, setUserName] = useState('');
 
     // Ref for carousel scrolling
     const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -150,77 +153,91 @@ export function StatsView({ receipts, selectedDate, availableMonths = [], onDate
             const result = await showInterstitialAd();
 
             if (result.result) {
-                // Wait a moment to ensure all animations and renders are complete
-                await new Promise(resolve => setTimeout(resolve, 300));
-
-                // Proceed with download
-                const base64 = await captureElement('stats-full-content', {
-                    onClone: (element) => {
-                        // CRITICAL: Reset transform so the receipts stack naturally without offset
-                        element.style.transform = 'none';
-
-                        // Fix height to auto (fit-content can cause issues with html2canvas gradient calculation)
-                        element.style.height = 'auto';
-                        element.style.minHeight = '100px'; // distinct non-zero min-height
-
-                        element.style.width = '100%'; // Ensure width is explicit
-
-                        // Apply Unified Gradient Background to the container
-                        element.style.background = 'linear-gradient(180deg, #FFFFFF 0%, #e7f5ff 100%)';
-
-                        // Collapse sections to remove extra whitespace
-                        const sections = element.querySelectorAll('.stats-section') as NodeListOf<HTMLElement>;
-                        sections.forEach(el => {
-                            el.style.background = 'transparent';
-                            el.style.height = 'auto'; // Collapse height
-                            el.style.minHeight = '0';
-                            el.style.flex = '0 0 auto';
-                            el.style.paddingBottom = '0'; // Reduce gap between sections
-                        });
-
-                        // Ensure Thermometer fills its area cleanly (Transparent to let gradient show)
-                        const thermView = element.querySelector('#stats-thermometer-view') as HTMLElement;
-                        if (thermView) {
-                            thermView.style.background = 'transparent';
-                            // Remove any extra padding/margin from thermometer container if needed
-                            const stack = thermView.querySelector('.mantine-Stack-root') as HTMLElement;
-                            if (stack) stack.style.paddingBottom = '0';
-
-                            // CRITICAL FIX: Replace gradient with solid color for thermometer liquid
-                            // html2canvas fails with "non-finite" on gradients in some contexts
-                            const liquids = thermView.querySelectorAll('.thermometer-liquid') as NodeListOf<HTMLElement>;
-                            liquids.forEach(liquid => {
-                                const color = liquid.dataset.color || '#339af0';
-                                liquid.style.background = color; // Solid color instead of gradient
-                            });
-                        }
-
-                        // Ensure Chart View is transparent (to let gradient show)
-                        const chartView = element.querySelector('#stats-chart-view') as HTMLElement;
-                        if (chartView) {
-                            chartView.style.background = 'transparent';
-                        }
-
-                        // Reveal capture-only elements (header & footer)
-                        const captureReveal = element.querySelectorAll('.capture-reveal') as NodeListOf<HTMLElement>;
-                        captureReveal.forEach(el => {
-                            el.style.display = 'block';
-                        });
-                        // Adjust emotion bar vertical alignment for captured image
-                        const emotionBar = element.querySelector('.emotion-bar') as HTMLElement;
-                        if (emotionBar) {
-                            emotionBar.style.transform = 'translateY(11px)';
-                        }
-                    }
-                });
-
-                if (base64) {
-                    await downloadBase64(base64, `emotion-receipt-${new Date().toISOString().slice(0, 10)}.png`);
-                } else {
-                    showAlert('이미지 생성에 실패했습니다.');
-                }
+                // Open name input modal after ad
+                openNameModal();
             } else {
                 showAlert('광고 시청이 완료되지 않았습니다.');
+                setIsDownloading(false);
+            }
+        } catch (error) {
+            console.error('Ad Error:', error);
+            showAlert('광고 실행 중 오류가 발생했습니다.');
+            setIsDownloading(false);
+        }
+    };
+
+    const handleConfirmName = async () => {
+        closeNameModal();
+
+        try {
+            // Wait a moment to ensure modal close animation finishes
+            await new Promise(resolve => setTimeout(resolve, 400));
+
+            // Proceed with download
+            const base64 = await captureElement('stats-full-content', {
+                onClone: (element) => {
+                    // CRITICAL: Reset transform so the receipts stack naturally without offset
+                    element.style.transform = 'none';
+
+                    // Fix height to auto (fit-content can cause issues with html2canvas gradient calculation)
+                    element.style.height = 'auto';
+                    element.style.minHeight = '100px'; // distinct non-zero min-height
+
+                    element.style.width = '100%'; // Ensure width is explicit
+
+                    // Apply Unified Gradient Background to the container
+                    element.style.background = 'linear-gradient(180deg, #FFFFFF 0%, #e7f5ff 100%)';
+
+                    // Collapse sections to remove extra whitespace
+                    const sections = element.querySelectorAll('.stats-section') as NodeListOf<HTMLElement>;
+                    sections.forEach(el => {
+                        el.style.background = 'transparent';
+                        el.style.height = 'auto'; // Collapse height
+                        el.style.minHeight = '0';
+                        el.style.flex = '0 0 auto';
+                        el.style.paddingBottom = '0'; // Reduce gap between sections
+                    });
+
+                    // Ensure Thermometer fills its area cleanly (Transparent to let gradient show)
+                    const thermView = element.querySelector('#stats-thermometer-view') as HTMLElement;
+                    if (thermView) {
+                        thermView.style.background = 'transparent';
+                        // Remove any extra padding/margin from thermometer container if needed
+                        const stack = thermView.querySelector('.mantine-Stack-root') as HTMLElement;
+                        if (stack) stack.style.paddingBottom = '0';
+
+                        // CRITICAL FIX: Replace gradient with solid color for thermometer liquid
+                        // html2canvas fails with "non-finite" on gradients in some contexts
+                        const liquids = thermView.querySelectorAll('.thermometer-liquid') as NodeListOf<HTMLElement>;
+                        liquids.forEach(liquid => {
+                            const color = liquid.dataset.color || '#339af0';
+                            liquid.style.background = color; // Solid color instead of gradient
+                        });
+                    }
+
+                    // Ensure Chart View is transparent (to let gradient show)
+                    const chartView = element.querySelector('#stats-chart-view') as HTMLElement;
+                    if (chartView) {
+                        chartView.style.background = 'transparent';
+                    }
+
+                    // Reveal capture-only elements (header & footer)
+                    const captureReveal = element.querySelectorAll('.capture-reveal') as NodeListOf<HTMLElement>;
+                    captureReveal.forEach(el => {
+                        el.style.display = 'block';
+                    });
+                    // Adjust emotion bar vertical alignment for captured image
+                    const emotionBar = element.querySelector('.emotion-bar') as HTMLElement;
+                    if (emotionBar) {
+                        emotionBar.style.transform = 'translateY(11px)';
+                    }
+                }
+            });
+
+            if (base64) {
+                await downloadBase64(base64, `emotion-receipt-${new Date().toISOString().slice(0, 10)}.png`);
+            } else {
+                showAlert('이미지 생성에 실패했습니다.');
             }
         } catch (error) {
             console.error('Download failed:', error);
@@ -265,8 +282,8 @@ export function StatsView({ receipts, selectedDate, availableMonths = [], onDate
         return { total, data, moodScore: Math.round(score) };
     }, [receipts]);
 
-    // If no receipts, show only the Help Button (and Modal)
-    if (receipts.length === 0) {
+    // If no receipts in the system, show only the Help button at the top
+    if (allReceipts.length === 0) {
         return (
             <Box style={{ position: 'relative', height: 0, zIndex: 10 }}>
                 <Group gap={8} style={{ position: 'absolute', top: '12px', left: '0px' }}>
@@ -481,6 +498,13 @@ export function StatsView({ receipts, selectedDate, availableMonths = [], onDate
                     <Stack className="stats-stack" gap="lg" align="center" mt="md" flex={1} justify="center">
                         {/* Total Amount Header with Date Selector */}
                         <div className="text-center">
+                            {userName && (
+                                <Box className="capture-reveal" style={{ display: 'none' }}>
+                                    <Text size="1.1rem" fw={800} c="blue.6" mb={2}>
+                                        {userName}님,
+                                    </Text>
+                                </Box>
+                            )}
                             <Group gap={4} justify="center" mb={4} style={{ cursor: 'pointer' }} onClick={openMonthModal}>
                                 <Text size="1rem" fw={800} c="dark.8" style={{ lineHeight: 1 }}>
                                     {dateTitle}
@@ -663,7 +687,7 @@ export function StatsView({ receipts, selectedDate, availableMonths = [], onDate
             <CalendarModal
                 opened={calendarOpened}
                 onClose={closeCalendar}
-                receipts={receipts}
+                receipts={allReceipts}
                 currentDate={selectedDate}
             />
 
@@ -735,7 +759,7 @@ export function StatsView({ receipts, selectedDate, availableMonths = [], onDate
                     }}
                     className="no-scrollbar"
                 >
-                    <style jsx global>{`
+                    <style>{`
                         .no-scrollbar::-webkit-scrollbar {
                             display: none;
                         }
@@ -795,6 +819,45 @@ export function StatsView({ receipts, selectedDate, availableMonths = [], onDate
                         <Text ta="center" c="gray.5" py="xl" w="100%">데이터가 없습니다</Text>
                     )}
                 </div>
+            </Modal>
+
+            {/* Name Input Modal */}
+            <Modal
+                opened={nameModalOpened}
+                onClose={() => {
+                    closeNameModal();
+                    setIsDownloading(false);
+                }}
+                centered
+                radius="lg"
+                title={<Text fw={800}>이미지에 넣을 이름</Text>}
+                padding="xl"
+            >
+                <Stack gap="md">
+                    <Text size="sm" c="gray.6">
+                        이미지 상단에 이름을 넣고 싶으면 입력해주세요.
+                    </Text>
+                    <TextInput
+                        placeholder="이름을 입력하세요 (최대 6자)"
+                        value={userName}
+                        onChange={(e) => setUserName(e.currentTarget.value.slice(0, 6))}
+                        size="md"
+                        radius="md"
+                        autoFocus
+                        onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleConfirmName();
+                        }}
+                    />
+                    <Button
+                        fullWidth
+                        size="md"
+                        radius="md"
+                        color="blue"
+                        onClick={handleConfirmName}
+                    >
+                        이 문구로 할게요
+                    </Button>
+                </Stack>
             </Modal>
         </Paper >
     );

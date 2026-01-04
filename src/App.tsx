@@ -52,28 +52,54 @@ export default function App() {
 
     // Initial Load
     useEffect(() => {
+        let unsubscribe: (() => void) | null = null;
+        let isMounted = true;
+
         async function init() {
+            // Loading fallback timeout (if login hangs)
+            const fallbackTimeout = setTimeout(() => {
+                if (isMounted && isLoading) {
+                    //console.warn('[Init] Fallback timeout reached. Forcing loading false.');
+                    setIsLoading(false);
+                }
+            }, 5000);
+
             try {
+                ////console.log('[Init] Starting initialization...');
+
                 // 1. Toss Login (Mock or Real)
                 await loginWithToss();
+                console.log('[Init] Toss Login successful');
 
                 // 2. Firebase Auth
                 const firebaseUser = await signIn();
+                if (!isMounted) return;
                 setUser(firebaseUser);
+                //console.log('[Init] Firebase Auth successful');
 
                 // 3. Subscribe Data
-                const unsubscribe = subscribeToReceipts(firebaseUser.uid, (data) => {
-                    setReceipts(data);
-                    setIsLoading(false);
+                unsubscribe = subscribeToReceipts(firebaseUser.uid, (data) => {
+                    if (isMounted) {
+                        setReceipts(data);
+                        setIsLoading(false);
+                        //console.log('[Init] Data subscribed and first results received');
+                    }
                 });
 
-                return () => unsubscribe();
             } catch (e) {
-                console.error(e);
-                setIsLoading(false);
+                //console.error('[Init] Initialization failed:', e);
+                if (isMounted) setIsLoading(false);
+            } finally {
+                clearTimeout(fallbackTimeout);
             }
         }
+
         init();
+
+        return () => {
+            isMounted = false;
+            if (unsubscribe) unsubscribe();
+        };
     }, []);
 
     // Initialize Rewarded Ads
@@ -161,6 +187,43 @@ export default function App() {
         }
     };
 
+    // Auto-redirect if current month becomes empty after deletion
+    useEffect(() => {
+        if (isLoading || receipts.length === 0 || filteredReceipts.length > 0) return;
+
+        // Find available months from all receipts
+        const months = Array.from(new Set(receipts.map(r => {
+            const d = new Date(r.date);
+            return dayjs(d).format('YYYY-MM');
+        }))).sort();
+
+        if (months.length > 0) {
+            const currentMonthVal = selectedDate.getFullYear() * 12 + selectedDate.getMonth();
+            let closestMonth = months[0];
+            let minDistance = Infinity;
+
+            months.forEach(mStr => {
+                const [y, m] = mStr.split('-').map(Number);
+                const monthVal = y * 12 + (m - 1);
+                const distance = Math.abs(currentMonthVal - monthVal);
+                if (distance < minDistance) {
+                    minDistance = distance;
+                    closestMonth = mStr;
+                }
+            });
+
+            const [y, m] = closestMonth.split('-').map(Number);
+            const newDate = new Date(y, m - 1, 1);
+
+            // Double check to avoid redundant updates
+            if (dayjs(newDate).format('YYYY-MM') !== dayjs(selectedDate).format('YYYY-MM')) {
+                //console.log(`[Navigation] Redirecting to ${closestMonth} as current month is empty.`);
+                setSelectedDate(newDate);
+            }
+        }
+    }, [receipts, filteredReceipts, isLoading, selectedDate]);
+
+
     return (
         <div className="min-h-screen bg-gray-50 min-h-screen-ios">
             {/* Inner Content Container with max-width */}
@@ -176,6 +239,7 @@ export default function App() {
                         <>
                             <StatsView
                                 receipts={filteredReceipts}
+                                allReceipts={receipts}
                                 selectedDate={selectedDate}
                                 availableMonths={availableMonths}
                                 onDateChange={setSelectedDate}
@@ -241,10 +305,7 @@ export default function App() {
                     <Transition transition="slide-up" mounted={!isLoading}>
                         {(transitionStyles) => {
                             // Determine Button State
-                            // User confirmed they want "1/3" after registering 1 (Total 3 Limit).
-                            // So display logic: Math.max(1, todayReceiptsCount) / dailyLimit
-                            const displayCount = Math.max(1, todayReceiptsCount);
-                            let buttonText = `등록 ${displayCount}/${dailyLimit}`;
+                            let buttonText = `등록 ${todayReceiptsCount}/${dailyLimit}`;
                             let buttonColor = "blue";
                             let buttonIcon = <IconPlus size={20} />;
                             let disabled = false;
@@ -259,16 +320,6 @@ export default function App() {
                                     buttonColor = "gray";
                                     disabled = true;
                                 }
-                            } else if (dailyLimit === 3) {
-                                // displayCount ensures "1/3" if 0 or 1 done. Wait. 
-                                // If 1 done. displayCount = 1. "1/3".
-                                // If 0 done. displayCount = 1. "1/3"? No, usually "1/1" for start.
-                                // But wait, user wanted "1/1" for start.
-                                // If 0 done. limit 1. "1/1".
-                                // Unlock -> Limit 3. 0 done? Can't happen logic wise (limit 1 reached first).
-                                // So "1/3" is correct for 1 done.
-                                // buttonText = `등록 ${displayCount}/${dailyLimit}`;
-                                buttonText = `등록 ${displayCount}/${dailyLimit}`;
                             }
 
                             return (

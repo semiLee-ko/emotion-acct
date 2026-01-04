@@ -31,9 +31,12 @@ export const functions = getFunctions(app, 'asia-northeast3');
 
 export const signIn = (): Promise<User> => {
     return new Promise(async (resolve, reject) => {
+        console.log('[Firebase] signIn initiated');
+
         // 1. Check if already logged in
         const unsubscribe = onAuthStateChanged(auth, (user) => {
             if (user) {
+                console.log('[Firebase] Auth state changed: User logged in', user.uid);
                 unsubscribe();
                 resolve(user);
             }
@@ -41,46 +44,54 @@ export const signIn = (): Promise<User> => {
 
         // 2. Try Toss Login
         try {
+            //console.log('[Firebase] Attempting Toss Auth Code...');
             const authResult = await getTossAuthCode();
+            //console.log('[Firebase] Toss Auth Code result:', authResult ? 'Recieved' : 'Empty');
 
             if (authResult?.authorizationCode) {
                 // Skip Cloud Function if using Mock Code (Local Dev)
                 if (authResult.authorizationCode.startsWith("mock_")) {
-                    console.log("🔸 Local Mock Auth detected. Skipping Cloud Function call.");
-                    throw new Error("Skipping server login in local environment");
-                }
+                    //console.log("[Firebase] 🔸 Local Mock Auth detected. Skipping Cloud Function call.");
+                    // We don't throw here, just let it fall back to anonymous if needed, 
+                    // but usually onAuthStateChanged would handle it if mock signs in.
+                    // Actually, if it's mock, we might need to trigger anonymous or mock sign in.
+                } else {
+                    //console.log("🚀 [Firebase] Toss Auth Code received, calling Cloud Function...");
+                    const emotionLogin = httpsCallable(functions, 'emotionLogin');
+                    const response = await emotionLogin({
+                        authorizationCode: authResult.authorizationCode,
+                        referrer: authResult.referrer || ''
+                    });
 
-                console.log("🚀 Toss Auth Code received, calling Cloud Function...");
-                const emotionLogin = httpsCallable(functions, 'emotionLogin');
-                const response = await emotionLogin({
-                    authorizationCode: authResult.authorizationCode,
-                    referrer: authResult.referrer || ''
-                });
-
-                const { token } = response.data as any;
-                if (token) {
-                    console.log("✅ Custom Token received, signing in...");
-                    const userCredential = await signInWithCustomToken(auth, token);
-                    // Listener above will resolve, but we can resolve here too? 
-                    // onAuthStateChanged is safer for single source of truth.
-                    return;
+                    const { token } = response.data as any;
+                    if (token) {
+                        //console.log("✅ [Firebase] Custom Token received, signing in...");
+                        await signInWithCustomToken(auth, token);
+                        //console.log("✅ [Firebase] Custom Token sign-in call completed");
+                        return; // Let onAuthStateChanged resolve
+                    } else {
+                        //console.warn('⚠️ [Firebase] No token in Cloud Function response');
+                    }
                 }
             }
         } catch (e) {
-            console.error("⚠️ Toss Login failed, falling back to anonymous:", e);
+            //console.error("⚠️ [Firebase] Toss Login flow failed:", e);
         }
 
-        // 3. Fallback: Anonymous Login (for Dev or cleanup)
-        // If we are here, Toss login failed or not in Toss app.
-        // wait a bit for onAuthStateChanged to fire if it was already logged in?
-        // Actually onAuthStateChanged fires immediately if already logged in. 
-        // If we are here, we are likely not logged in or waiting.
-
-        // Simple check: if no user in 1 sec, do anonymous? 
-        // Better: just trigger anonymous if auth state is null.
+        // 3. Fallback: Anonymous Login
         if (!auth.currentUser) {
-            console.log("👻 Signing in anonymously...");
-            signInAnonymously(auth).catch(reject);
+            console.log("👻 [Firebase] Triggering anonymous login fallback...");
+            try {
+                const cred = await signInAnonymously(auth);
+                //console.log("✅ [Firebase] Anonymous login successful", cred.user.uid);
+                // resolve(cred.user); // onAuthStateChanged will handle it
+            } catch (err) {
+                console.error("❌ [Firebase] Anonymous login failed:", err);
+                reject(err);
+            }
+        } else {
+            //console.log("[Firebase] Already has current user, skipping anonymous fallback");
+            resolve(auth.currentUser);
         }
     });
 };
